@@ -1,6 +1,6 @@
 import './style.css'
 import dictUrl from '../dict/mozc.bin.gz?url'
-import { Composer, PAGE_SIZE, type Key } from './ime/composer'
+import { Composer, PAGE_SIZE, wholeRow, type Key, type Live } from './ime/composer'
 import { learnChoice, type LearnedSet, type Segment } from './ime/converter'
 import type { SerializedLearned, WorkerRequest, WorkerResponse } from './ime/worker'
 
@@ -90,6 +90,12 @@ function setStatus(text: string, done = false) {
 // 开始输入时记下要替换的选区；未确定期间 textarea 的值不变，只在 mirror 里显示
 let anchor = { start: 0, end: 0 }
 
+function request(kana: string, fixed: number[]): Promise<Segment[]> {
+  const id = ++nextId
+  send({ type: 'convert', id, kana, fixed })
+  return new Promise((resolve) => pending.set(id, resolve))
+}
+
 const composer = new Composer({
   convert(kana, fixed) {
     if (!ready) {
@@ -97,9 +103,10 @@ const composer = new Composer({
       window.setTimeout(() => statusEl.classList.remove('flash'), 600)
       return null
     }
-    const id = ++nextId
-    send({ type: 'convert', id, kana, fixed })
-    return new Promise((resolve) => pending.set(id, resolve))
+    return request(kana, fixed)
+  },
+  suggest(kana) {
+    return ready ? request(kana, []) : null
   },
   start() {
     anchor = { start: textarea.selectionStart, end: textarea.selectionEnd }
@@ -138,12 +145,16 @@ function keyFromEvent(e: KeyboardEvent): Key | null {
   if (e.metaKey || e.ctrlKey || e.altKey) return null
   if (COMPOSE_CHAR.test(e.key)) return { type: 'char', ch: e.key }
   if (!active) return null
+  // = 和 + 是同一个键，Shift 按没按都展开
+  if (e.key === '=' || e.key === '+') return { type: 'expand' }
   if (/^[0-9]$/.test(e.key)) return { type: 'digit', n: Number(e.key) }
   switch (e.key) {
     case ' ':
       return { type: e.shiftKey ? 'shiftSpace' : 'space' }
     case 'Enter':
       return { type: 'enter' }
+    case 'Tab':
+      return { type: e.shiftKey ? 'shiftTab' : 'tab' }
     case 'Backspace':
       return { type: 'backspace' }
     case 'Escape':
@@ -250,6 +261,11 @@ function autosize() {
 
 function renderCandidates() {
   const s = composer.state
+  if (s?.mode === 'input' && composer.live && composer.live.items.length > 0) {
+    renderLive(composer.live)
+    return
+  }
+  candidatesEl.className = 'candidates'
   if (!s || s.mode !== 'convert') {
     candidatesEl.hidden = true
     return
@@ -271,20 +287,79 @@ function renderCandidates() {
   // 放在当前文節下方，横向不超出编辑框
   const span = mirror.querySelector<HTMLSpanElement>('.seg.focus')
   if (!span) return
+  placeCandidates(span)
+}
+
+/** 候选窗放在 span 下方，横向不超出编辑框 */
+function placeCandidates(span: HTMLElement) {
   const rects = span.getClientRects()
   const rect = rects[rects.length - 1] ?? span.getBoundingClientRect()
   const box = editor.getBoundingClientRect()
   const width = candidatesEl.offsetWidth
-  const left = Math.max(0, Math.min(rects[0].left - box.left, box.width - width))
+  const left = Math.max(0, Math.min((rects[0] ?? rect).left - box.left, box.width - width))
   candidatesEl.style.left = `${left}px`
   candidatesEl.style.top = `${rect.bottom - box.top + 6}px`
+}
+
+// 窄屏少放几列，↑↓ 按行移动要和这里一致
+const gridColumns = () => (editor.clientWidth < 480 ? 3 : 5)
+
+/** 打字时的候选：默认一行横排，= 或点 ⌄ 展开成网格 */
+function renderLive(live: Live) {
+  const { items, highlight, expanded } = live
+  const active = highlight >= 0
+  const cell = (index: number, num: number | null) => {
+    const c = items[index]
+    const selected = index === highlight
+    const label = num === null ? '' : `<span class="num">${num}</span>`
+    return `<div class="cand${selected ? ' selected' : ''}" role="option" aria-selected="${selected}" data-index="${index}" title="${escapeHtml(c.surface)}">${label}${escapeHtml(c.surface)}</div>`
+  }
+  let html: string
+  if (expanded) {
+    composer.columns = gridColumns()
+    candidatesEl.style.setProperty('--columns', String(composer.columns))
+    html = `<div class="grid">${items.map((_, i) => cell(i, null)).join('')}</div>`
+    // 整句候选通常比较长，覆盖多个文節时在网格里独占一行
+    if (wholeRow(items)) html = html.replace('class="cand', 'class="cand whole')
+  } else {
+    const page = Math.floor(Math.max(0, highlight) / PAGE_SIZE)
+    const indexes = items.map((_, i) => i).slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    html = `<div class="row">${indexes.map((index, i) => cell(index, i + 1)).join('')}</div>`
+  }
+  if (expanded || items.length > PAGE_SIZE) {
+    html += `<button type="button" class="expand" tabindex="-1" aria-label="${expanded ? '收起候选' : '展开候选'}" aria-expanded="${expanded}">${expanded ? '⌃' : '⌄'}</button>`
+  }
+  candidatesEl.innerHTML = html
+  candidatesEl.className = `candidates live${expanded ? ' expanded' : ''}${active ? ' active' : ''}`
+  candidatesEl.hidden = false
+
+  const span = mirror.querySelector<HTMLSpanElement>('.comp')
+  if (span) placeCandidates(span)
+  // 高亮的候选滚到可见范围；不用 scrollIntoView，免得整页跟着滚
+  const el = candidatesEl.querySelector<HTMLElement>('.cand.selected')
+  const scroller = el?.parentElement
+  if (el && scroller) {
+    if (el.offsetLeft < scroller.scrollLeft) scroller.scrollLeft = el.offsetLeft
+    else if (el.offsetLeft + el.offsetWidth > scroller.scrollLeft + scroller.clientWidth)
+      scroller.scrollLeft = el.offsetLeft + el.offsetWidth - scroller.clientWidth
+    if (el.offsetTop < scroller.scrollTop) scroller.scrollTop = el.offsetTop
+    else if (el.offsetTop + el.offsetHeight > scroller.scrollTop + scroller.clientHeight)
+      scroller.scrollTop = el.offsetTop + el.offsetHeight - scroller.clientHeight
+  }
 }
 
 // 点候选：阻止默认行为保住 textarea 的焦点
 candidatesEl.addEventListener('pointerdown', (e) => {
   e.preventDefault()
-  const item = (e.target as HTMLElement).closest<HTMLElement>('.cand')
-  if (item) composer.select(Number(item.dataset.index))
+  const target = e.target as HTMLElement
+  if (target.closest('.expand')) {
+    composer.handle({ type: 'expand' })
+    return
+  }
+  const item = target.closest<HTMLElement>('.cand')
+  if (!item) return
+  if (composer.state?.mode === 'input') composer.pick(Number(item.dataset.index))
+  else composer.select(Number(item.dataset.index))
 })
 
 // ---- 复制 ----

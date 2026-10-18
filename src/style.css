@@ -210,6 +210,88 @@ textarea.surface:focus {
   color: var(--muted);
 }
 
+/* 打字时的实时候选：一行横排，展开后是网格 */
+.candidates.live {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.live .row,
+.live .grid {
+  position: relative;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.live .row {
+  display: flex;
+  overflow-x: auto;
+}
+
+.live .cand {
+  flex: none;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+}
+
+.live .num {
+  visibility: hidden;
+}
+
+.live.active .num {
+  visibility: visible;
+}
+
+.candidates.live.expanded {
+  flex-direction: column;
+  width: min(100%, 560px);
+}
+
+.live .grid {
+  display: grid;
+  grid-template-columns: repeat(var(--columns, 5), minmax(0, 1fr));
+  max-height: 252px;
+  overflow-y: auto;
+}
+
+.live .grid .cand {
+  display: block;
+  padding: 6px 10px;
+}
+
+.live .grid .cand.whole {
+  grid-column: 1 / -1;
+}
+
+.expand {
+  flex: none;
+  min-width: 34px;
+  margin-left: 2px;
+  padding: 0 8px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.expand:hover {
+  background: var(--panel-strong);
+  color: var(--ink);
+}
+
+.expanded .expand {
+  margin: 4px 0 0;
+  padding: 4px 0;
+  border-left: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+}
+
 .page {
   padding: 4px 8px 2px;
   color: var(--faint);

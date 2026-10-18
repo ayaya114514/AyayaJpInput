@@ -26,6 +26,7 @@ function setup(ready = true) {
   let starts = 0
   const composer = new Composer({
     convert: (kana, fixed) => (ready ? Promise.resolve(fakeConvert(kana, fixed)) : null),
+    suggest: (kana) => (ready ? Promise.resolve(fakeConvert(kana, [])) : null),
     commit: (text) => committed.push(text),
     learn: (reading, c) => learned.push([reading, c]),
     start: () => starts++,
@@ -33,6 +34,10 @@ function setup(ready = true) {
   })
   const type = (s: string) => {
     for (const ch of s) composer.handle({ type: 'char', ch })
+  }
+  const flush = async () => {
+    await Promise.resolve()
+    await Promise.resolve()
   }
   const press = async (...keys: Key['type'][]) => {
     // 转换结果是异步回来的，每个键之后都等一下
@@ -42,7 +47,7 @@ function setup(ready = true) {
       await Promise.resolve()
     }
   }
-  return { composer, committed, learned, type, press, starts: () => starts }
+  return { composer, committed, learned, type, press, flush, starts: () => starts }
 }
 
 describe('输入状态', () => {
@@ -166,5 +171,132 @@ describe('转换状态', () => {
     expect(composer.text).toBe('コーヒー')
     await press('hiragana')
     expect(composer.text).toBe('こーひー')
+  })
+})
+
+describe('实时候选', () => {
+  const surfaces = (composer: Composer) => composer.live?.items.map((x) => x.surface)
+
+  it('打字时就出候选：整句首选、第一个文節的候选、平假名、片假名', async () => {
+    const { composer, type, flush } = setup()
+    type('kanaji')
+    await flush()
+    expect(composer.state?.mode).toBe('input')
+    expect(surfaces(composer)).toEqual(['漢かな漢じ', '漢かな', 'かな', '別かな', 'かなじ', 'カナジ'])
+    expect(composer.live?.highlight).toBe(-1)
+  })
+
+  it('末尾没拼完的罗马音不参与转换', async () => {
+    const { composer, type, flush } = setup()
+    type('kanak')
+    await flush()
+    expect(surfaces(composer)?.[0]).toBe('漢かな')
+    composer.pick(0)
+    expect(composer.text).toBe('k')
+  })
+
+  it('点整句候选直接确定', async () => {
+    const { composer, committed, type, flush } = setup()
+    type('kanaji')
+    await flush()
+    composer.pick(0)
+    expect(committed).toEqual(['漢かな漢じ'])
+    expect(composer.active).toBe(false)
+    expect(composer.live).toBeNull()
+  })
+
+  it('选第一个文節的候选只确定这一段，剩下的继续输入并学习', async () => {
+    const { composer, committed, learned, type, flush, starts } = setup()
+    type('kanaji')
+    await flush()
+    composer.pick(3)
+    expect(committed).toEqual(['別かな'])
+    expect(learned).toEqual([['かな', { surface: '別かな', lid: 1, rid: 1 }]])
+    expect(composer.state).toEqual({ mode: 'input', buffer: 'じ' })
+    expect(starts()).toBe(2)
+    await flush()
+    expect(surfaces(composer)?.[0]).toBe('漢じ')
+  })
+
+  it('Tab 进入候选，Enter 确定高亮的那个', async () => {
+    const { composer, committed, type, flush, press } = setup()
+    type('kanaji')
+    await flush()
+    await press('tab', 'tab', 'shiftTab', 'tab')
+    expect(composer.live?.highlight).toBe(1)
+    await press('enter')
+    expect(committed).toEqual(['漢かな'])
+  })
+
+  it('没进入候选时数字照常输入，进入后数字选当前页', async () => {
+    const { composer, committed, type, flush, press } = setup()
+    type('kana')
+    await flush()
+    composer.handle({ type: 'digit', n: 2 })
+    expect(composer.text).toBe('かな2')
+    await flush()
+    await press('tab')
+    composer.handle({ type: 'digit', n: 1 })
+    expect(committed).toEqual(['漢かな'])
+    expect(composer.text).toBe('2')
+  })
+
+  it('= 展开并高亮第一个，展开后 ↓ 按行移动，Esc 先收起再取消', async () => {
+    const { composer, committed, type, flush, press } = setup()
+    composer.columns = 2
+    // 只有一个文節，没有独占一行的整句候选
+    type('kana')
+    await flush()
+    await press('expand')
+    expect(composer.live).toMatchObject({ expanded: true, highlight: 0 })
+    await press('down', 'right')
+    expect(composer.live?.highlight).toBe(3)
+    await press('escape')
+    expect(composer.live).toMatchObject({ expanded: false, highlight: -1 })
+    expect(composer.active).toBe(true)
+    await press('escape')
+    expect(composer.active).toBe(false)
+    expect(committed).toEqual([''])
+  })
+
+  it('整句独占第一行时 ↑↓ 按这个布局移动', async () => {
+    const { composer, type, flush, press } = setup()
+    composer.columns = 2
+    type('kanaji')
+    await flush()
+    // 第一行：漢かな漢じ；之后每行两个：漢かな かな / 別かな かなじ / カナジ
+    await press('expand', 'down')
+    expect(composer.live?.highlight).toBe(1)
+    await press('down', 'right', 'down')
+    expect(composer.live?.highlight).toBe(5)
+    await press('up', 'up', 'up')
+    expect(composer.live?.highlight).toBe(0)
+  })
+
+  it('继续打字会收起候选并重新转换', async () => {
+    const { composer, type, flush, press } = setup()
+    type('kana')
+    await flush()
+    await press('expand')
+    type('ji')
+    expect(composer.live).toMatchObject({ expanded: false, highlight: -1 })
+    await flush()
+    expect(surfaces(composer)?.[0]).toBe('漢かな漢じ')
+  })
+
+  it('没有候选时 Tab 和 = 不吃掉', () => {
+    const { composer, type } = setup(false)
+    type('kana')
+    expect(composer.handle({ type: 'tab' })).toBe(false)
+    expect(composer.handle({ type: 'expand' })).toBe(false)
+  })
+
+  it('Space 转换后实时候选消失', async () => {
+    const { composer, type, flush, press } = setup()
+    type('kana')
+    await flush()
+    await press('space')
+    expect(composer.state?.mode).toBe('convert')
+    expect(composer.live).toBeNull()
   })
 })

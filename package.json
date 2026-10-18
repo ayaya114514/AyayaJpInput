@@ -2,7 +2,7 @@
   "name": "ayaya-jp-input",
   "version": "0.1.0",
   "private": true,
-  "description": "罗马音转平假名 / 片假名",
+  "description": "浏览器里的日语输入法",
   "type": "module",
   "engines": {
     "node": ">=22"

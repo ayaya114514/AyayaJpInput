@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#1a1d22" stroke="#3a404b" stroke-width="2"/>
+  <text x="9" y="22" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600" fill="#82aee1">a</text>
+  <text x="37" y="53" text-anchor="middle" font-family="'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', sans-serif" font-size="32" font-weight="700" fill="#f2f4f7">あ</text>
+</svg>

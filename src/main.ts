@@ -1,5 +1,6 @@
 import './style.css'
-import { hiraganaToKatakana } from './romaji'
+import { toHiragana, toKatakana } from './romaji'
+import { attachKanaInput } from './kanaInput'
 import dictUrl from '../dict/mozc.bin.gz?url'
 import { Composer, PAGE_SIZE, currentRow, type Key, type Live, type Suggestion } from './ime/composer'
 import { learnChoice, type LearnedSet, type Segment } from './ime/converter'
@@ -9,13 +10,15 @@ const editor = document.querySelector<HTMLDivElement>('#editor')!
 const textarea = document.querySelector<HTMLTextAreaElement>('#text')!
 const mirror = document.querySelector<HTMLDivElement>('#mirror')!
 const candidatesEl = document.querySelector<HTMLDivElement>('#candidates')!
-const kanaEl = document.querySelector<HTMLDivElement>('#kana')!
 const statusEl = document.querySelector<HTMLSpanElement>('#status')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
-const copyKanaButton = document.querySelector<HTMLButtonElement>('#copy-kana')!
+const hiraInput = document.querySelector<HTMLTextAreaElement>('#hira')!
+const kataInput = document.querySelector<HTMLTextAreaElement>('#kata')!
 
 const TEXT_KEY = 'ayaya-jp-input:text'
 const LEARNED_KEY = 'ayaya-jp-input:learned'
+const HIRA_KEY = 'ayaya-jp-input:hira'
+const KATA_KEY = 'ayaya-jp-input:kata'
 
 // localStorage 在隐私模式等情况下可能抛错，读写都兜住
 const storage = {
@@ -247,14 +250,6 @@ function render() {
 
   autosize()
   renderCandidates()
-  renderKana()
-}
-
-/** 输入框下面的片假名框：整段正文（含未确定的部分）实时转成片假名，汉字原样保留 */
-function renderKana() {
-  const value = textarea.value
-  const full = composer.active ? value.slice(0, anchor.start) + composer.text + value.slice(anchor.end) : value
-  kanaEl.textContent = hiraganaToKatakana(full)
 }
 
 function autosize() {
@@ -432,9 +427,34 @@ function bindCopy(button: HTMLButtonElement, getText: () => string) {
 }
 
 bindCopy(copyButton, () => textarea.value)
-bindCopy(copyKanaButton, () => hiraganaToKatakana(textarea.value))
+bindCopy(document.querySelector<HTMLButtonElement>('#copy-hira')!, () => hiraInput.value)
+bindCopy(document.querySelector<HTMLButtonElement>('#copy-kata')!, () => kataInput.value)
 
-window.addEventListener('resize', render)
+// ---- 平假名 / 片假名框：罗马音直接转假名，不走输入法 ----
+
+function fit(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight + 2}px`
+}
+
+for (const [el, key, convert] of [
+  [hiraInput, HIRA_KEY, toHiragana],
+  [kataInput, KATA_KEY, toKatakana],
+] as const) {
+  attachKanaInput(el, convert)
+  el.value = storage.get(key) ?? ''
+  el.addEventListener('input', () => {
+    storage.set(key, el.value)
+    fit(el)
+  })
+  fit(el)
+}
+
+window.addEventListener('resize', () => {
+  render()
+  fit(hiraInput)
+  fit(kataInput)
+})
 
 textarea.value = storage.get(TEXT_KEY) ?? ''
 textarea.setSelectionRange(textarea.value.length, textarea.value.length)

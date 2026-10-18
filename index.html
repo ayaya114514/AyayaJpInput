@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <meta name="description" content="浏览器里的日语输入法" />
+    <meta name="description" content="浏览器里的日语输入：平假名、片假名、汉字转换" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>AyayaJpInput</title>
   </head>
@@ -15,35 +15,65 @@
         <h1>AyayaJpInput</h1>
       </header>
 
-      <div class="editor" id="editor">
-        <label class="sr-only" for="text">日文输入</label>
+      <section class="field">
+        <div class="field-head">
+          <label class="field-label" for="hira">ひらがな</label>
+          <button type="button" class="copy" id="copy-hira" aria-label="复制平假名">复制</button>
+        </div>
         <textarea
-          id="text"
+          id="hira"
           class="surface"
-          rows="4"
-          placeholder="kyouhaiitenkidesu"
+          rows="3"
+          placeholder="konnichiha"
           autocomplete="off"
           autocapitalize="off"
           autocorrect="off"
           spellcheck="false"
           lang="ja"
-          autofocus
         ></textarea>
-        <div class="surface mirror" id="mirror" lang="ja" aria-hidden="true"></div>
-        <div class="candidates" id="candidates" role="listbox" aria-label="候选" lang="ja" hidden></div>
-        <button type="button" class="copy copy-main" id="copy" aria-label="复制正文">复制</button>
-      </div>
-
-      <section class="kana-box" aria-label="片假名">
-        <span class="kana-label">カタカナ</span>
-        <div class="kana-text" id="kana" lang="ja" data-placeholder="キョウハイイテンキデス"></div>
-        <button type="button" class="copy" id="copy-kana" aria-label="复制片假名">复制</button>
       </section>
 
-      <div class="bar">
-        <span class="status" id="status" role="status">词典加载中</span>
-      </div>
+      <section class="field">
+        <div class="field-head">
+          <label class="field-label" for="kata">カタカナ</label>
+          <button type="button" class="copy" id="copy-kata" aria-label="复制片假名">复制</button>
+        </div>
+        <textarea
+          id="kata"
+          class="surface"
+          rows="3"
+          placeholder="ko-hi-"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          lang="ja"
+        ></textarea>
+      </section>
 
+      <section class="field">
+        <div class="field-head">
+          <label class="field-label" for="text">漢字変換</label>
+          <span class="status" id="status" role="status">词典加载中</span>
+          <button type="button" class="copy" id="copy" aria-label="复制漢字変換">复制</button>
+        </div>
+        <div class="editor" id="editor">
+          <textarea
+            id="text"
+            class="surface"
+            rows="3"
+            placeholder="kyouhaiitenkidesu"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            lang="ja"
+            autofocus
+          ></textarea>
+          <div class="surface mirror" id="mirror" lang="ja" aria-hidden="true"></div>
+          <div class="candidates" id="candidates" role="listbox" aria-label="候选" lang="ja" hidden></div>
+        </div>
+      </section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

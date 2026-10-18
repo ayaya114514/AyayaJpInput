@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="输入罗马音，实时转换为可复制的平假名和片假名" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AyayaJpInput</title>
+  </head>
+  <body>
+    <main class="app">
+      <header class="brand">
+        <img src="/favicon.svg" alt="" width="40" height="40" />
+        <h1>AyayaJpInput</h1>
+      </header>
+      <p class="lead">输入罗马音，实时转换为平假名和片假名</p>
+
+      <label class="sr-only" for="romaji">罗马音</label>
+      <textarea
+        id="romaji"
+        class="input"
+        rows="3"
+        placeholder="konnichiwa"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        autofocus
+      ></textarea>
+
+      <section class="result" aria-label="平假名">
+        <div class="result-head">
+          <span class="result-label">ひらがな</span>
+          <button type="button" class="copy" data-target="hiragana" disabled>复制</button>
+        </div>
+        <output id="hiragana" class="result-text" lang="ja" aria-live="off" data-placeholder="こんにちわ"></output>
+      </section>
+
+      <section class="result" aria-label="片假名">
+        <div class="result-head">
+          <span class="result-label">カタカナ</span>
+          <button type="button" class="copy" data-target="katakana" disabled>复制</button>
+        </div>
+        <output id="katakana" class="result-text" lang="ja" aria-live="off" data-placeholder="コンニチワ"></output>
+      </section>
+
+      <p class="hint">
+        <code>nn</code> / <code>n'</code> 打ん，双写辅音打っ，<code>-</code> 打ー，<code>x</code> / <code>l</code> 打小写假名
+      </p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <meta name="description" content="浏览器里的日语输入法：输入罗马音，边打边出汉字假名候选" />
+    <meta name="description" content="浏览器里的日语输入法" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>AyayaJpInput</title>
   </head>
@@ -14,7 +14,6 @@
         <img src="/favicon.svg" alt="" width="40" height="40" />
         <h1>AyayaJpInput</h1>
       </header>
-      <p class="lead">输入罗马音，下方直接点候选，或按 Space 转换</p>
 
       <div class="editor" id="editor">
         <label class="sr-only" for="text">日文输入</label>
@@ -40,10 +39,9 @@
       </div>
 
       <p class="hint">
-        <kbd>Tab</kbd> 选输入中的候选 · <kbd>=</kbd> 展开候选 · <kbd>Space</kbd> 转换 / 下一个候选 ·
-        <kbd>↑</kbd><kbd>↓</kbd> 选候选 · <kbd>←</kbd><kbd>→</kbd> 换文節 ·
-        <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 调整文節 · <kbd>Enter</kbd> 确定 · <kbd>Esc</kbd> 取消 ·
-        <kbd>F6</kbd> / <kbd>F7</kbd> 平假名 / 片假名
+        <kbd>1</kbd>–<kbd>9</kbd> 选候选 · <kbd>Tab</kbd> 移动 · <kbd>=</kbd> 展开 / 下一行 · <kbd>-</kbd> 上一行 ·
+        <kbd>Space</kbd> 转换 · <kbd>←</kbd><kbd>→</kbd> 换文節 · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 调整文節 ·
+        <kbd>Enter</kbd> 确定 · <kbd>Esc</kbd> 取消
       </p>
     </main>
     <script type="module" src="/src/main.ts"></script>

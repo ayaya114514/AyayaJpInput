@@ -19,9 +19,15 @@ export interface Suggestion {
 
 export interface Live {
   items: Suggestion[]
-  /** -1 表示还没进入候选（Tab / = 进入） */
+  /** 整个读音的片假名，单独一栏 */
+  katakana: Suggestion
+  /** 0..items.length-1 是候选，items.length 是片假名栏；默认第一个 */
   highlight: number
+  /** 动过高亮（Tab、方向键、=）之后 Enter 才确定高亮的候选，否则原样确定假名 */
+  active: boolean
   expanded: boolean
+  /** 每一行第一个候选的下标，host 按实际宽度排好后写回 */
+  rows: number[]
 }
 
 export type Composition =
@@ -44,8 +50,6 @@ export type Key =
         | 'shiftRight'
         | 'up'
         | 'down'
-        | 'hiragana'
-        | 'katakana'
         | 'tab'
         | 'shiftTab'
         | 'expand'
@@ -69,8 +73,6 @@ export const displayOf = (buffer: string) => toHiragana(buffer)
 export class Composer {
   state: Composition | null = null
   live: Live | null = null
-  /** 展开后候选网格的列数，↑↓ 按行移动，由 host 按宽度设置 */
-  columns = 5
   private requestId = 0
 
   constructor(private host: ComposerHost) {}
@@ -143,10 +145,6 @@ export class Composer {
       case 'down':
         this.startConvert(displayOf(s.buffer), [])
         return true
-      case 'hiragana':
-      case 'katakana':
-        this.toKanaSegment(displayOf(s.buffer), key.type === 'katakana')
-        return true
       case 'tab':
       case 'shiftTab':
       case 'expand':
@@ -161,72 +159,84 @@ export class Composer {
   /** 实时候选里的移动和选择；返回 false 的键按普通输入处理 */
   private handleLive(live: Live, key: Key): boolean {
     const n = live.items.length
-    const active = live.highlight >= 0
-    const moveTo = (index: number) => {
-      live.highlight = index
+    const moveTo = (index: number | null) => {
+      if (index !== null) live.highlight = index
+      live.active = true
       this.host.changed()
     }
     switch (key.type) {
       case 'tab':
-        moveTo(active ? (live.highlight + 1) % n : 0)
+        moveTo((live.highlight + 1) % (n + 1))
         return true
       case 'shiftTab':
-        moveTo(active ? (live.highlight - 1 + n) % n : n - 1)
-        return true
-      case 'expand':
-        live.expanded = !live.expanded
-        if (live.expanded && !active) live.highlight = 0
-        this.host.changed()
-        return true
-      case 'escape':
-        if (!active && !live.expanded) return false
-        live.highlight = -1
-        live.expanded = false
-        this.host.changed()
-        return true
-    }
-    if (!active) return false
-    switch (key.type) {
-      case 'space':
-        moveTo((live.highlight + 1) % n)
-        return true
-      case 'shiftSpace':
-        moveTo((live.highlight - 1 + n) % n)
+        moveTo((live.highlight + n) % (n + 1))
         return true
       case 'left':
         moveTo(Math.max(0, live.highlight - 1))
         return true
       case 'right':
-        moveTo(Math.min(n - 1, live.highlight + 1))
+        moveTo(Math.min(n, live.highlight + 1))
         return true
-      case 'up':
-        if (live.expanded) moveTo(gridMove(live.items, live.highlight, -this.columns))
-        return true
-      case 'down':
+      case 'expand':
+        // = 先展开，展开后每按一次往下一行
         if (!live.expanded) {
           live.expanded = true
-          this.host.changed()
+          moveTo(null)
         } else {
-          moveTo(gridMove(live.items, live.highlight, this.columns))
+          moveTo(rowStep(live, 1))
         }
         return true
+      case 'char':
+        // - 平时是长音ー，只有展开时才是往上一行，第一行再按就收起
+        if (key.ch !== '-' || !live.expanded) return false
+        if (rowOf(live, live.highlight) === 0) {
+          live.expanded = false
+          this.host.changed()
+        } else {
+          moveTo(rowStep(live, -1))
+        }
+        return true
+      case 'up':
+        if (live.expanded) moveTo(rowStep(live, -1))
+        return true
+      case 'down':
+        if (live.expanded) moveTo(rowStep(live, 1) ?? n)
+        else if (live.active) {
+          live.expanded = true
+          this.host.changed()
+        } else return false
+        return true
       case 'digit': {
-        const page = Math.floor(live.highlight / PAGE_SIZE)
-        const index = page * PAGE_SIZE + key.n - 1
-        if (key.n >= 1 && index < n) this.pick(index)
+        const r = rowOf(live, live.highlight)
+        const index = live.rows[r] + key.n - 1
+        if (key.n >= 1 && index < rowEnd(live, r)) this.pick(index)
         return true
       }
       case 'enter':
+        if (!live.active) return false
         this.pick(live.highlight)
+        return true
+      case 'escape':
+        if (!live.active && !live.expanded) return false
+        live.highlight = 0
+        live.active = false
+        live.expanded = false
+        this.host.changed()
         return true
     }
     return false
   }
 
-  /** 选中实时候选：确定它覆盖的那一段，剩下的读音继续留在输入里 */
+  /** host 按宽度排好行以后写回，↑↓ / = - / 数字键都按这个走 */
+  setRows(rows: number[]) {
+    if (this.live && rows.length > 0) this.live.rows = rows
+  }
+
+  /** 选中实时候选（items.length 是片假名栏）：确定它覆盖的那一段，剩下的读音继续留在输入里 */
   pick(index: number) {
     const s = this.state
-    const item = this.live?.items[index]
+    const live = this.live
+    const item = live && (index === live.items.length ? live.katakana : live.items[index])
     if (!s || s.mode !== 'input' || !item) return
     const display = displayOf(s.buffer)
     // 结果还没跟上最新输入（比如刚删了字）时不确定
@@ -298,10 +308,6 @@ export class Composer {
       case 'backspace':
         this.setInput(s.kana)
         return true
-      case 'hiragana':
-      case 'katakana':
-        this.toKanaSegment(s.kana, key.type === 'katakana')
-        return true
     }
   }
 
@@ -332,10 +338,7 @@ export class Composer {
     }
     this.state = { mode: 'input', buffer }
     // 旧候选先留着，等新结果回来再换，避免每个键都闪一下
-    if (this.live) {
-      this.live.highlight = -1
-      this.live.expanded = false
-    }
+    if (this.live) Object.assign(this.live, { highlight: 0, active: false, expanded: false })
     this.host.changed()
     this.suggest(displayOf(buffer))
   }
@@ -354,7 +357,11 @@ export class Composer {
     const id = this.requestId
     pending.then((segments) => {
       if (id !== this.requestId || this.state?.mode !== 'input') return
-      this.live = { items: suggestionsOf(kana, segments), highlight: -1, expanded: false }
+      const items = suggestionsOf(kana, segments)
+      if (items.length === 0) return
+      const rows = items.map((_, i) => i).filter((i) => i % PAGE_SIZE === 0)
+      const katakana = { surface: hiraganaToKatakana(kana), reading: kana }
+      this.live = { items, katakana, highlight: 0, active: false, expanded: false, rows }
       this.host.changed()
     })
   }
@@ -385,39 +392,30 @@ export class Composer {
     })
   }
 
-  private toKanaSegment(kana: string, katakana: boolean) {
-    this.requestId++
-    const kata = hiraganaToKatakana(kana)
-    const candidates: Candidate[] = [
-      { surface: kana, lid: 0, rid: 0 },
-      ...(kata !== kana ? [{ surface: kata, lid: 0, rid: 0 }] : []),
-    ]
-    const segment: SegmentState = {
-      start: 0,
-      end: kana.length,
-      reading: kana,
-      candidates,
-      index: katakana && candidates.length > 1 ? 1 : 0,
-    }
-    this.state = { mode: 'convert', kana, segments: [segment], focus: 0 }
-    this.live = null
-    this.host.changed()
-  }
 }
 
-/** 整句候选覆盖多个文節时比较长，展开后独占第一行 */
-export const wholeRow = (items: Suggestion[]) => items.length > 1 && items[0].reading !== items[1].reading
+const rowEnd = (live: Live, r: number) => live.rows[r + 1] ?? live.items.length
 
-/** 展开的网格里上下移动一行；delta 是 ±列数 */
-function gridMove(items: Suggestion[], index: number, delta: number): number {
-  const last = items.length - 1
-  if (!wholeRow(items)) return Math.max(0, Math.min(last, index + delta))
-  if (index === 0) return delta > 0 ? Math.min(1, last) : 0
-  const next = index + delta
-  return next < 1 ? 0 : Math.min(last, next)
+/** 高亮所在的行；片假名栏算最后一行 */
+function rowOf(live: Live, index: number): number {
+  let r = 0
+  while (r + 1 < live.rows.length && live.rows[r + 1] <= index) r++
+  return r
 }
 
-/** 整句首选在最前，然后是第一个文節的各个候选，最后补平假名 / 片假名 */
+/** 上下移动一行，尽量保持在同一列；到头了返回 null */
+function rowStep(live: Live, dir: 1 | -1): number | null {
+  const last = live.rows.length - 1
+  // 从片假名栏往上回到最后一行
+  if (live.highlight === live.items.length) return dir < 0 ? live.rows[last] : null
+  const r = rowOf(live, live.highlight)
+  const t = r + dir
+  if (t < 0 || t > last) return null
+  const offset = live.highlight - live.rows[r]
+  return Math.min(live.rows[t] + offset, rowEnd(live, t) - 1)
+}
+
+/** 整句首选在最前，然后是第一个文節的各个候选，最后补平假名；片假名单独一栏，这里不重复 */
 export function suggestionsOf(kana: string, segments: Segment[]): Suggestion[] {
   if (segments.length === 0) return []
   const items: Suggestion[] = []
@@ -428,6 +426,6 @@ export function suggestionsOf(kana: string, segments: Segment[]): Suggestion[] {
   const first = segments[0]
   first.candidates.forEach((c, i) => add({ surface: c.surface, reading: first.reading, learn: i > 0 ? c : undefined }))
   add({ surface: kana, reading: kana })
-  add({ surface: hiraganaToKatakana(kana), reading: kana })
-  return items
+  const katakana = hiraganaToKatakana(kana)
+  return items.filter((x) => x.surface !== katakana)
 }

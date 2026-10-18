@@ -10,6 +10,8 @@
   --faint: #858d99;
   --blue: #82aee1;
   --green: #5cc49a;
+  /* 当前候选：白字在上面要够对比度 */
+  --accent: #17845a;
   --jp-font: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', sans-serif;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC',
@@ -57,12 +59,6 @@ body {
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-
-.lead {
-  margin: 0 0 6px;
-  color: var(--muted);
-  font-size: 16px;
 }
 
 .editor {
@@ -169,7 +165,7 @@ textarea.surface:focus {
   background: var(--panel);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   font-family: var(--jp-font);
-  font-size: 18px;
+  font-size: 19px;
   touch-action: manipulation;
   user-select: none;
 }
@@ -181,9 +177,10 @@ textarea.surface:focus {
 .cand {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 6px 12px 6px 8px;
+  gap: 8px;
+  padding: 5px 12px 5px 8px;
   border-radius: 6px;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -195,73 +192,89 @@ textarea.surface:focus {
 }
 
 .cand.selected {
-  background: #2f4a6a;
+  background: var(--accent);
+  color: #fff;
 }
 
 .cand .num {
   flex: none;
-  width: 1ch;
   color: var(--faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .cand.selected .num {
-  color: var(--muted);
+  color: #fff;
 }
 
-/* 打字时的实时候选：一行横排，展开后是网格 */
+/* 打字时的实时候选：候选栏（展开后同宽多行）+ 下面单独的片假名栏 */
 .candidates.live {
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.live .panel,
+.live .kana-bar {
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.live .panel {
+  display: flex;
+  width: 100%;
+}
+
+.live .rows {
+  flex: 1;
   min-width: 0;
 }
 
-.live .row,
-.live .grid {
-  position: relative;
-  min-width: 0;
-  scrollbar-width: none;
+.live.expanded .rows {
+  max-height: 222px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .live .row {
   display: flex;
-  overflow-x: auto;
+  min-width: 0;
+}
+
+.live .row + .row {
+  margin-top: 2px;
 }
 
 .live .cand {
   flex: none;
-  gap: 6px;
-  padding: 6px 10px 6px 8px;
+  max-width: 100%;
+  gap: 5px;
+  padding: 4px 9px 4px 7px;
 }
 
-.live .num {
+/* 数字只标在当前行，数字键选的也是这一行 */
+.live .row:not(.current) .num {
   visibility: hidden;
 }
 
-.live.active .num {
-  visibility: visible;
+.live .kana-bar .cand {
+  padding: 4px 9px;
 }
 
-.candidates.live.expanded {
-  flex-direction: column;
-  width: min(100%, 560px);
-}
-
-.live .grid {
-  display: grid;
-  grid-template-columns: repeat(var(--columns, 5), minmax(0, 1fr));
-  max-height: 252px;
-  overflow-y: auto;
-}
-
-.live .grid .cand {
-  display: block;
-  padding: 6px 10px;
-}
-
-.live .grid .cand.whole {
-  grid-column: 1 / -1;
+.live.measure {
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .expand {
@@ -285,11 +298,8 @@ textarea.surface:focus {
 }
 
 .expanded .expand {
-  margin: 4px 0 0;
-  padding: 4px 0;
-  border-left: 0;
-  border-top: 1px solid var(--line);
-  border-radius: 0 0 6px 6px;
+  align-self: flex-start;
+  height: 34px;
 }
 
 .page {

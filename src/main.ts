@@ -1,6 +1,6 @@
 import './style.css'
 import dictUrl from '../dict/mozc.bin.gz?url'
-import { Composer, PAGE_SIZE, wholeRow, type Key, type Live } from './ime/composer'
+import { Composer, PAGE_SIZE, type Key, type Live, type Suggestion } from './ime/composer'
 import { learnChoice, type LearnedSet, type Segment } from './ime/converter'
 import type { SerializedLearned, WorkerRequest, WorkerResponse } from './ime/worker'
 
@@ -138,10 +138,6 @@ const COMPOSE_CHAR = /^[a-zA-Z\-,.?!'[\]~]$/
 
 function keyFromEvent(e: KeyboardEvent): Key | null {
   const active = composer.active
-  if (e.ctrlKey && !e.metaKey && !e.altKey && active) {
-    if (e.key === 'j') return { type: 'hiragana' }
-    if (e.key === 'k') return { type: 'katakana' }
-  }
   if (e.metaKey || e.ctrlKey || e.altKey) return null
   if (COMPOSE_CHAR.test(e.key)) return { type: 'char', ch: e.key }
   if (!active) return null
@@ -167,10 +163,6 @@ function keyFromEvent(e: KeyboardEvent): Key | null {
       return { type: 'up' }
     case 'ArrowDown':
       return { type: 'down' }
-    case 'F6':
-      return { type: 'hiragana' }
-    case 'F7':
-      return { type: 'katakana' }
   }
   return null
 }
@@ -197,6 +189,7 @@ textarea.addEventListener('beforeinput', (e) => {
     if (chars.every((ch) => COMPOSE_CHAR.test(ch))) keys = chars.map((ch) => ({ type: 'char', ch }))
     else if (composer.active && e.data === ' ') keys = [{ type: 'space' }]
     else if (composer.active && /^[0-9]$/.test(e.data)) keys = [{ type: 'digit', n: Number(e.data) }]
+    else if (composer.active && (e.data === '=' || e.data === '+')) keys = [{ type: 'expand' }]
   } else if (composer.active && e.inputType === 'insertLineBreak') {
     keys = [{ type: 'enter' }]
   } else if (composer.active && e.inputType === 'deleteContentBackward') {
@@ -266,6 +259,7 @@ function renderCandidates() {
     return
   }
   candidatesEl.className = 'candidates'
+  candidatesEl.style.width = ''
   if (!s || s.mode !== 'convert') {
     candidatesEl.hidden = true
     return
@@ -301,47 +295,77 @@ function placeCandidates(span: HTMLElement) {
   candidatesEl.style.top = `${rect.bottom - box.top + 6}px`
 }
 
-// 窄屏少放几列，↑↓ 按行移动要和这里一致
-const gridColumns = () => (editor.clientWidth < 480 ? 3 : 5)
+// 小栏和展开后的大栏同宽
+const barWidth = () => Math.min(editor.clientWidth, 600)
 
-/** 打字时的候选：默认一行横排，= 或点 ⌄ 展开成网格 */
+// 量候选宽度用的隐藏栏，样式和真正的候选栏一致
+const measurer = document.createElement('div')
+measurer.className = 'candidates live measure'
+measurer.setAttribute('aria-hidden', 'true')
+editor.append(measurer)
+
+let layoutCache: { items: Suggestion[]; width: number; rows: number[] } | null = null
+
+/** 按实际宽度把候选排成一行一行，每行最多 9 个，返回每行第一个的下标 */
+function layoutRows(items: Suggestion[]): number[] {
+  const width = barWidth()
+  if (layoutCache?.items === items && layoutCache.width === width) return layoutCache.rows
+  measurer.style.width = `${width}px`
+  measurer.innerHTML = `<div class="panel"><div class="rows"><div class="row">${items
+    .map((c) => `<div class="cand"><span class="num">9</span>${escapeHtml(c.surface)}</div>`)
+    .join('')}</div></div><button type="button" class="expand">⌄</button></div>`
+  const rowsEl = measurer.querySelector<HTMLElement>('.rows')!
+  const room = rowsEl.clientWidth
+  const widths = [...measurer.querySelectorAll<HTMLElement>('.cand')].map((el) => el.getBoundingClientRect().width)
+  const rows: number[] = []
+  let used = Infinity
+  widths.forEach((w, i) => {
+    if (used + w > room || i - rows[rows.length - 1] >= PAGE_SIZE) {
+      rows.push(i)
+      used = 0
+    }
+    used += w
+  })
+  measurer.innerHTML = ''
+  layoutCache = { items, width, rows }
+  return rows
+}
+
+/** 打字时的候选：默认一行，= 展开成同宽的多行；下面单独一栏片假名 */
 function renderLive(live: Live) {
-  const { items, highlight, expanded } = live
-  const active = highlight >= 0
-  const cell = (index: number, num: number | null) => {
-    const c = items[index]
+  composer.setRows(layoutRows(live.items))
+  const { items, highlight, expanded, rows } = live
+  let current = 0
+  while (current + 1 < rows.length && rows[current + 1] <= Math.min(highlight, items.length - 1)) current++
+
+  const option = (index: number, label: string, surface: string) => {
     const selected = index === highlight
-    const label = num === null ? '' : `<span class="num">${num}</span>`
-    return `<div class="cand${selected ? ' selected' : ''}" role="option" aria-selected="${selected}" data-index="${index}" title="${escapeHtml(c.surface)}">${label}${escapeHtml(c.surface)}</div>`
+    return `<div class="cand${selected ? ' selected' : ''}" role="option" aria-selected="${selected}" data-index="${index}" title="${escapeHtml(surface)}">${label}${escapeHtml(surface)}</div>`
   }
-  let html: string
-  if (expanded) {
-    composer.columns = gridColumns()
-    candidatesEl.style.setProperty('--columns', String(composer.columns))
-    html = `<div class="grid">${items.map((_, i) => cell(i, null)).join('')}</div>`
-    // 整句候选通常比较长，覆盖多个文節时在网格里独占一行
-    if (wholeRow(items)) html = html.replace('class="cand', 'class="cand whole')
-  } else {
-    const page = Math.floor(Math.max(0, highlight) / PAGE_SIZE)
-    const indexes = items.map((_, i) => i).slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-    html = `<div class="row">${indexes.map((index, i) => cell(index, i + 1)).join('')}</div>`
+  const row = (r: number) => {
+    const end = rows[r + 1] ?? items.length
+    const cells = []
+    for (let i = rows[r]; i < end; i++) cells.push(option(i, `<span class="num">${i - rows[r] + 1}</span>`, items[i].surface))
+    return `<div class="row${r === current ? ' current' : ''}">${cells.join('')}</div>`
   }
-  if (expanded || items.length > PAGE_SIZE) {
-    html += `<button type="button" class="expand" tabindex="-1" aria-label="${expanded ? '收起候选' : '展开候选'}" aria-expanded="${expanded}">${expanded ? '⌃' : '⌄'}</button>`
-  }
-  candidatesEl.innerHTML = html
-  candidatesEl.className = `candidates live${expanded ? ' expanded' : ''}${active ? ' active' : ''}`
+  const shown = expanded ? rows.map((_, r) => row(r)) : [row(current)]
+  const button =
+    rows.length > 1 || expanded
+      ? `<button type="button" class="expand" tabindex="-1" aria-label="${expanded ? '收起候选' : '展开候选'}" aria-expanded="${expanded}">${expanded ? '⌃' : '⌄'}</button>`
+      : ''
+  candidatesEl.innerHTML =
+    `<div class="panel"><div class="rows">${shown.join('')}</div>${button}</div>` +
+    `<div class="kana-bar">${option(items.length, '', live.katakana.surface)}</div>`
+  candidatesEl.className = `candidates live${expanded ? ' expanded' : ''}`
+  candidatesEl.style.width = `${barWidth()}px`
   candidatesEl.hidden = false
 
   const span = mirror.querySelector<HTMLSpanElement>('.comp')
   if (span) placeCandidates(span)
-  // 高亮的候选滚到可见范围；不用 scrollIntoView，免得整页跟着滚
-  const el = candidatesEl.querySelector<HTMLElement>('.cand.selected')
-  const scroller = el?.parentElement
-  if (el && scroller) {
-    if (el.offsetLeft < scroller.scrollLeft) scroller.scrollLeft = el.offsetLeft
-    else if (el.offsetLeft + el.offsetWidth > scroller.scrollLeft + scroller.clientWidth)
-      scroller.scrollLeft = el.offsetLeft + el.offsetWidth - scroller.clientWidth
+  // 当前行滚到可见范围；不用 scrollIntoView，免得整页跟着滚
+  const scroller = candidatesEl.querySelector<HTMLElement>('.rows')
+  const el = candidatesEl.querySelector<HTMLElement>('.row.current')
+  if (expanded && scroller && el) {
     if (el.offsetTop < scroller.scrollTop) scroller.scrollTop = el.offsetTop
     else if (el.offsetTop + el.offsetHeight > scroller.scrollTop + scroller.clientHeight)
       scroller.scrollTop = el.offsetTop + el.offsetHeight - scroller.clientHeight

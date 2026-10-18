@@ -10,6 +10,7 @@
   --faint: #858d99;
   --blue: #82aee1;
   --green: #5cc49a;
+  --jp-font: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', sans-serif;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC',
     sans-serif;
@@ -32,7 +33,7 @@ body {
 }
 
 .app {
-  width: min(720px, 100%);
+  width: min(760px, 100%);
   margin: 0 auto;
   padding: 48px 16px 40px;
   display: flex;
@@ -64,69 +65,181 @@ body {
   font-size: 16px;
 }
 
-.input {
+.editor {
+  position: relative;
+}
+
+/* textarea 和 mirror 共用排版，未确定的文字才能和正文对齐 */
+.surface {
+  display: block;
   width: 100%;
-  min-height: 96px;
+  min-height: 140px;
+  margin: 0;
   padding: 14px 16px;
-  resize: none;
-  overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
+  font-family: var(--jp-font);
+  font-size: 22px;
+  line-height: 1.6;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+}
+
+textarea.surface {
+  resize: none;
+  overflow: hidden;
   background: var(--panel-strong);
   color: var(--ink);
-  font: inherit;
-  font-size: 20px;
-  line-height: 1.5;
   caret-color: var(--blue);
 }
 
-.input::placeholder {
+textarea.surface::placeholder {
   color: var(--faint);
 }
 
-.input:focus {
+textarea.surface:focus {
   outline: none;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(130, 174, 225, 0.18);
 }
 
-.result {
-  padding: 12px 16px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+.mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-height: 0;
+  border-color: transparent;
+  color: var(--ink);
+  pointer-events: none;
+  visibility: hidden;
 }
 
-.result-head {
+.editor.composing textarea.surface,
+.editor.composing textarea.surface::placeholder {
+  color: transparent;
+  caret-color: transparent;
+}
+
+.editor.composing .mirror {
+  visibility: visible;
+}
+
+.comp {
+  border-bottom: 2px solid var(--blue);
+}
+
+.seg {
+  margin-right: 2px;
+  border-bottom: 2px solid var(--line-strong);
+}
+
+.seg.focus {
+  border-bottom-color: var(--blue);
+  border-radius: 3px 3px 0 0;
+  background: rgba(130, 174, 225, 0.22);
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  margin-left: 1px;
+  vertical-align: -0.2em;
+  background: var(--blue);
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.candidates {
+  position: absolute;
+  z-index: 10;
+  min-width: 160px;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  font-family: var(--jp-font);
+  font-size: 18px;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.candidates[hidden] {
+  display: none;
+}
+
+.cand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cand:hover {
+  background: var(--panel-strong);
+}
+
+.cand.selected {
+  background: #2f4a6a;
+}
+
+.cand .num {
+  flex: none;
+  width: 1ch;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.cand.selected .num {
+  color: var(--muted);
+}
+
+.page {
+  padding: 4px 8px 2px;
+  color: var(--faint);
+  font-size: 12px;
+  text-align: right;
+}
+
+.bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 6px;
 }
 
-.result-label {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.result-text {
-  display: block;
-  min-height: 1.5em;
-  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', sans-serif;
-  font-size: 26px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-.result-text:empty::before {
-  content: attr(data-placeholder);
+.status {
   color: var(--faint);
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.status a {
+  color: var(--muted);
+}
+
+.status.flash {
+  color: var(--blue);
 }
 
 .copy {
+  flex: none;
   min-width: 72px;
   padding: 6px 14px;
   border: 1px solid var(--line-strong);
@@ -138,18 +251,13 @@ body {
   cursor: pointer;
 }
 
-.copy:hover:not(:disabled) {
+.copy:hover {
   border-color: var(--blue);
 }
 
 .copy:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
-}
-
-.copy:disabled {
-  color: var(--faint);
-  cursor: default;
 }
 
 .copy.done {
@@ -161,16 +269,17 @@ body {
   margin: 4px 0 0;
   color: var(--faint);
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.9;
 }
 
-.hint code {
+.hint kbd {
   padding: 1px 6px;
+  border: 1px solid var(--line);
   border-radius: 5px;
   background: var(--panel);
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .sr-only {
@@ -191,7 +300,7 @@ body {
     font-size: 22px;
   }
 
-  .result-text {
-    font-size: 22px;
+  .surface {
+    font-size: 20px;
   }
 }

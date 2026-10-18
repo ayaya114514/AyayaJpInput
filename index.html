@@ -31,16 +31,17 @@
         ></textarea>
         <div class="surface mirror" id="mirror" lang="ja" aria-hidden="true"></div>
         <div class="candidates" id="candidates" role="listbox" aria-label="候选" lang="ja" hidden></div>
+        <button type="button" class="copy copy-main" id="copy" aria-label="复制正文">复制</button>
       </div>
 
-      <section class="kana-box" id="kana-box" aria-label="片假名">
+      <section class="kana-box" aria-label="片假名">
         <span class="kana-label">カタカナ</span>
-        <div class="kana-text" id="kana" lang="ja" data-placeholder="コーヒー"></div>
+        <div class="kana-text" id="kana" lang="ja" data-placeholder="キョウハイイテンキデス"></div>
+        <button type="button" class="copy" id="copy-kana" aria-label="复制片假名">复制</button>
       </section>
 
       <div class="bar">
         <span class="status" id="status" role="status">词典加载中</span>
-        <button type="button" class="copy" id="copy">复制</button>
       </div>
 
     </main>

@@ -1,4 +1,5 @@
 import './style.css'
+import { hiraganaToKatakana } from './romaji'
 import dictUrl from '../dict/mozc.bin.gz?url'
 import { Composer, PAGE_SIZE, currentRow, type Key, type Live, type Suggestion } from './ime/composer'
 import { learnChoice, type LearnedSet, type Segment } from './ime/converter'
@@ -8,10 +9,10 @@ const editor = document.querySelector<HTMLDivElement>('#editor')!
 const textarea = document.querySelector<HTMLTextAreaElement>('#text')!
 const mirror = document.querySelector<HTMLDivElement>('#mirror')!
 const candidatesEl = document.querySelector<HTMLDivElement>('#candidates')!
-const kanaBox = document.querySelector<HTMLElement>('#kana-box')!
 const kanaEl = document.querySelector<HTMLDivElement>('#kana')!
 const statusEl = document.querySelector<HTMLSpanElement>('#status')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
+const copyKanaButton = document.querySelector<HTMLButtonElement>('#copy-kana')!
 
 const TEXT_KEY = 'ayaya-jp-input:text'
 const LEARNED_KEY = 'ayaya-jp-input:learned'
@@ -249,20 +250,12 @@ function render() {
   renderKana()
 }
 
-/** 输入框下面的片假名框：打字时显示当前读音的片假名，点一下（或 Shift+Tab 再 Enter）确定 */
+/** 输入框下面的片假名框：整段正文（含未确定的部分）实时转成片假名，汉字原样保留 */
 function renderKana() {
-  const live = composer.state?.mode === 'input' ? composer.live : null
-  kanaEl.textContent = live?.katakana.surface ?? ''
-  kanaBox.classList.toggle('ready', live !== null)
-  kanaBox.classList.toggle('selected', live !== null && live.highlight === live.items.length)
+  const value = textarea.value
+  const full = composer.active ? value.slice(0, anchor.start) + composer.text + value.slice(anchor.end) : value
+  kanaEl.textContent = hiraganaToKatakana(full)
 }
-
-// 和候选一样，阻止默认行为保住 textarea 的焦点
-kanaBox.addEventListener('pointerdown', (e) => {
-  e.preventDefault()
-  const live = composer.state?.mode === 'input' ? composer.live : null
-  if (live) composer.pick(live.items.length)
-})
 
 function autosize() {
   textarea.style.height = 'auto'
@@ -422,18 +415,24 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-let copyTimer = 0
-copyButton.addEventListener('click', async () => {
-  composer.commitAll()
-  const ok = textarea.value !== '' && (await copyText(textarea.value))
-  copyButton.textContent = ok ? '已复制' : textarea.value === '' ? '没有内容' : '复制失败'
-  copyButton.classList.toggle('done', ok)
-  window.clearTimeout(copyTimer)
-  copyTimer = window.setTimeout(() => {
-    copyButton.textContent = '复制'
-    copyButton.classList.remove('done')
-  }, 1200)
-})
+function bindCopy(button: HTMLButtonElement, getText: () => string) {
+  let timer = 0
+  button.addEventListener('click', async () => {
+    composer.commitAll()
+    const text = getText()
+    const ok = text !== '' && (await copyText(text))
+    button.textContent = ok ? '已复制' : text === '' ? '没有内容' : '复制失败'
+    button.classList.toggle('done', ok)
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => {
+      button.textContent = '复制'
+      button.classList.remove('done')
+    }, 1200)
+  })
+}
+
+bindCopy(copyButton, () => textarea.value)
+bindCopy(copyKanaButton, () => hiraganaToKatakana(textarea.value))
 
 window.addEventListener('resize', render)
 

@@ -394,10 +394,14 @@ export class Composer {
 
 }
 
+/** 小栏显示、数字键对应的那一行 */
+export const currentRow = (live: Live) => rowOf(live, live.highlight)
+
 const rowEnd = (live: Live, r: number) => live.rows[r + 1] ?? live.items.length
 
-/** 高亮所在的行；片假名栏算最后一行 */
+/** 高亮所在的行；选中片假名框时小栏停在第一行，展开时算最后一行 */
 function rowOf(live: Live, index: number): number {
+  if (index >= live.items.length && !live.expanded) return 0
   let r = 0
   while (r + 1 < live.rows.length && live.rows[r + 1] <= index) r++
   return r

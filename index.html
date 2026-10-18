@@ -33,16 +33,16 @@
         <div class="candidates" id="candidates" role="listbox" aria-label="候选" lang="ja" hidden></div>
       </div>
 
+      <section class="kana-box" id="kana-box" aria-label="片假名">
+        <span class="kana-label">カタカナ</span>
+        <div class="kana-text" id="kana" lang="ja" data-placeholder="コーヒー"></div>
+      </section>
+
       <div class="bar">
         <span class="status" id="status" role="status">词典加载中</span>
         <button type="button" class="copy" id="copy">复制</button>
       </div>
 
-      <p class="hint">
-        <kbd>1</kbd>–<kbd>9</kbd> 选候选 · <kbd>Tab</kbd> 移动 · <kbd>=</kbd> 展开 / 下一行 · <kbd>-</kbd> 上一行 ·
-        <kbd>Space</kbd> 转换 · <kbd>←</kbd><kbd>→</kbd> 换文節 · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 调整文節 ·
-        <kbd>Enter</kbd> 确定 · <kbd>Esc</kbd> 取消
-      </p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

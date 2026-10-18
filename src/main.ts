@@ -1,6 +1,6 @@
 import './style.css'
 import dictUrl from '../dict/mozc.bin.gz?url'
-import { Composer, PAGE_SIZE, type Key, type Live, type Suggestion } from './ime/composer'
+import { Composer, PAGE_SIZE, currentRow, type Key, type Live, type Suggestion } from './ime/composer'
 import { learnChoice, type LearnedSet, type Segment } from './ime/converter'
 import type { SerializedLearned, WorkerRequest, WorkerResponse } from './ime/worker'
 
@@ -8,6 +8,8 @@ const editor = document.querySelector<HTMLDivElement>('#editor')!
 const textarea = document.querySelector<HTMLTextAreaElement>('#text')!
 const mirror = document.querySelector<HTMLDivElement>('#mirror')!
 const candidatesEl = document.querySelector<HTMLDivElement>('#candidates')!
+const kanaBox = document.querySelector<HTMLElement>('#kana-box')!
+const kanaEl = document.querySelector<HTMLDivElement>('#kana')!
 const statusEl = document.querySelector<HTMLSpanElement>('#status')!
 const copyButton = document.querySelector<HTMLButtonElement>('#copy')!
 
@@ -244,7 +246,23 @@ function render() {
 
   autosize()
   renderCandidates()
+  renderKana()
 }
+
+/** 输入框下面的片假名框：打字时显示当前读音的片假名，点一下（或 Shift+Tab 再 Enter）确定 */
+function renderKana() {
+  const live = composer.state?.mode === 'input' ? composer.live : null
+  kanaEl.textContent = live?.katakana.surface ?? ''
+  kanaBox.classList.toggle('ready', live !== null)
+  kanaBox.classList.toggle('selected', live !== null && live.highlight === live.items.length)
+}
+
+// 和候选一样，阻止默认行为保住 textarea 的焦点
+kanaBox.addEventListener('pointerdown', (e) => {
+  e.preventDefault()
+  const live = composer.state?.mode === 'input' ? composer.live : null
+  if (live) composer.pick(live.items.length)
+})
 
 function autosize() {
   textarea.style.height = 'auto'
@@ -335,8 +353,7 @@ function layoutRows(items: Suggestion[]): number[] {
 function renderLive(live: Live) {
   composer.setRows(layoutRows(live.items))
   const { items, highlight, expanded, rows } = live
-  let current = 0
-  while (current + 1 < rows.length && rows[current + 1] <= Math.min(highlight, items.length - 1)) current++
+  const current = currentRow(live)
 
   const option = (index: number, label: string, surface: string) => {
     const selected = index === highlight
@@ -353,9 +370,7 @@ function renderLive(live: Live) {
     rows.length > 1 || expanded
       ? `<button type="button" class="expand" tabindex="-1" aria-label="${expanded ? '收起候选' : '展开候选'}" aria-expanded="${expanded}">${expanded ? '⌃' : '⌄'}</button>`
       : ''
-  candidatesEl.innerHTML =
-    `<div class="panel"><div class="rows">${shown.join('')}</div>${button}</div>` +
-    `<div class="kana-bar">${option(items.length, '', live.katakana.surface)}</div>`
+  candidatesEl.innerHTML = `<div class="panel"><div class="rows">${shown.join('')}</div>${button}</div>`
   candidatesEl.className = `candidates live${expanded ? ' expanded' : ''}`
   candidatesEl.style.width = `${barWidth()}px`
   candidatesEl.hidden = false

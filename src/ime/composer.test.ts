@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Composer, type Key } from './composer'
+import { Composer, currentRow, type Key } from './composer'
 import type { Candidate, Segment } from './converter'
 
 // 假转换器：每两个假名一个文節，候选是「漢{读音}」和读音本身
@@ -305,6 +305,17 @@ describe('实时候选', () => {
     expect(live(composer).highlight).toBe(5)
     await press('up')
     expect(live(composer).highlight).toBe(4)
+  })
+
+  it('选中片假名框时小栏和数字键停在第一行', async () => {
+    const { composer, committed, type, flush, press } = setup()
+    type('kanaji')
+    await flush()
+    composer.setRows([0, 2, 4])
+    await press('shiftTab')
+    expect(currentRow(live(composer))).toBe(0)
+    composer.handle({ type: 'digit', n: 2 })
+    expect(committed).toEqual(['漢かな'])
   })
 
   it('Esc 先退出候选再取消', async () => {

@@ -53,29 +53,36 @@ const serializeLearned = (): SerializedLearned => ({ segment: [...learned.segmen
 
 // ---- worker ----
 
-const worker = new Worker(new URL('./ime/worker.ts', import.meta.url), { type: 'module' })
+// 词典解压后约 36 MB（下载 10 MB），只用平假名 / 片假名框时用不到：
+// 用户聚焦汉字框或在里面按键 / 点按时才开始加载
+let worker: Worker | null = null
 let ready = false
 let nextId = 0
 const pending = new Map<number, (segments: Segment[]) => void>()
-const send = (msg: WorkerRequest) => worker.postMessage(msg)
+const send = (msg: WorkerRequest) => worker?.postMessage(msg)
 
-worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-  const msg = event.data
-  if (msg.type === 'progress') {
-    const pct = msg.total ? Math.min(99, Math.floor((msg.loaded / msg.total) * 100)) : 0
-    setStatus(`词典加载中 ${pct}%`)
-  } else if (msg.type === 'ready') {
-    ready = true
-    setStatus('词典已就绪', true)
-  } else if (msg.type === 'error') {
-    setStatus(`词典加载失败：${msg.message}（仍可输入假名）`)
-  } else if (msg.type === 'result') {
-    pending.get(msg.id)?.(msg.segments)
-    pending.delete(msg.id)
+function loadDictionary() {
+  if (worker) return
+  worker = new Worker(new URL('./ime/worker.ts', import.meta.url), { type: 'module' })
+  worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+    const msg = event.data
+    if (msg.type === 'progress') {
+      const pct = msg.total ? Math.min(99, Math.floor((msg.loaded / msg.total) * 100)) : 0
+      setStatus(`词典加载中 ${pct}%`)
+    } else if (msg.type === 'ready') {
+      ready = true
+      setStatus('词典已就绪', true)
+    } else if (msg.type === 'error') {
+      setStatus(`词典加载失败：${msg.message}（仍可输入假名）`)
+    } else if (msg.type === 'result') {
+      pending.get(msg.id)?.(msg.segments)
+      pending.delete(msg.id)
+    }
   }
+  worker.onerror = () => setStatus('词典加载失败（仍可输入假名）')
+  setStatus('词典加载中')
+  send({ type: 'init', url: new URL(dictUrl, location.href).href, learned: serializeLearned() })
 }
-worker.onerror = () => setStatus('词典加载失败（仍可输入假名）')
-send({ type: 'init', url: new URL(dictUrl, location.href).href, learned: serializeLearned() })
 
 function setStatus(text: string, done = false) {
   statusEl.textContent = text
@@ -455,6 +462,18 @@ window.addEventListener('resize', () => {
   fit(hiraInput)
   fit(kataInput)
 })
+
+// autofocus 带来的 focus 不算：页面上有过真实按键 / 点按之后（比如 Tab 进来）的 focus 才加载
+let interacted = false
+for (const type of ['keydown', 'pointerdown']) {
+  document.addEventListener(type, () => (interacted = true), { capture: true, once: true })
+}
+textarea.addEventListener('focus', () => {
+  if (interacted) loadDictionary()
+})
+for (const type of ['keydown', 'beforeinput', 'pointerdown']) {
+  textarea.addEventListener(type, loadDictionary, { once: true })
+}
 
 textarea.value = storage.get(TEXT_KEY) ?? ''
 textarea.setSelectionRange(textarea.value.length, textarea.value.length)
